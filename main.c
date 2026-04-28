@@ -16,14 +16,13 @@
 
 // reads input board
 char *read_input(FILE *fp, int *W_p, int *H_p, int *L_p) {
-	fscanf(fp, "%d %d %d\n", W_p, H_p, L_p);
+	fscanf(fp, "%d %d %d", W_p, H_p, L_p);
 	char *board = malloc(*W_p * *H_p);
-	char *buffer = malloc(*W_p + 2);
-	for (int i = 0; i < *H_p; i++) {
-		fgets(buffer, *W_p + 2, fp);
-		strncpy(board + *W_p*i, buffer, *W_p);
+	for (int row = 0; row < *H_p; row++) {
+		for (int col = 0; col < *W_p; col++) {
+			fscanf(fp, " %c", board + row * *W_p + col);
+		}
 	}
-	free(buffer);
 	return board;
 }
 
