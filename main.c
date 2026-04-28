@@ -145,7 +145,10 @@ void place_mirrors(char *board, int *mirrors, int L, int *empties) {
 // rotate placed mirrors, returns 0 if at last rotation
 int rotate_mirrors(char *board, int *mirrors, int mirror, int *empties) {
 	if (mirror < 0) return 0;
-	if (board[empties[mirrors[mirror]]] == MIRROR_2) return rotate_mirrors(board, mirrors, mirror-1, empties);
+	if (board[empties[mirrors[mirror]]] == MIRROR_2) {
+		board[empties[mirrors[mirror]]] = MIRROR_1;
+		return rotate_mirrors(board, mirrors, mirror-1, empties);
+	}
 	board[empties[mirrors[mirror]]] = MIRROR_2;
 	return 1;
 }
@@ -165,8 +168,6 @@ void next_combination(int *mirrors, int L, int n_empties) {
 
 // solves the problem
 void solve(char *board, int W, int H, int L) {
-	if (L < 1) return;
-
 	// find indices of cats, lasers and empty spaces
 	int *cats = malloc(sizeof(int) * W*H);
 	int *lasers = malloc(sizeof(int) * W*H);
@@ -181,6 +182,8 @@ void solve(char *board, int W, int H, int L) {
 
 	// place mirrors in initial positions
 	L = n_empties < L ? n_empties : L;
+	if (L < 1) return;
+
 	int *mirrors = malloc(sizeof(int) * L);
 	for (int i = 0; i < L; i++) {
 		mirrors[i] = i;
@@ -201,6 +204,17 @@ void solve(char *board, int W, int H, int L) {
 
 		// remove placed mirrors
 		remove_mirrors(board, mirrors, L, empties);
+
+		// if no solutions found - try placing less mirrors
+		if (mirrors[0] == n_empties-L) {
+			free(cats);
+			free(lasers);
+			free(empties);
+			free(mirrors);
+			solve(board, W, H, L-1);
+			return;
+		}
+
 		// find next placement combination for mirrors
 		next_combination(mirrors, L, n_empties);
 		// place mirrors in new placement combination
