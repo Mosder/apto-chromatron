@@ -240,4 +240,6 @@ int main(int argc, char *argv[]) {
 	solve(board, W, H, L);
 	print_board(board, W, H, L);
 	free(board);
+
+	return 0;
 }
