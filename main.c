@@ -12,7 +12,9 @@
 #define MIRROR_1 '\\'
 #define MIRROR_2 '/'
 #define WALL '#'
-#define COVERED 1
+
+#define MIRROR_TYPE_COUNT 2
+char mirror_types[MIRROR_TYPE_COUNT] = {MIRROR_1, MIRROR_2};
 
 // reads input board
 char *read_input(FILE *fp, int *W_p, int *H_p, int *L_p) {
@@ -79,45 +81,18 @@ char change_dir(char dir, char mirror) {
 	}
 }
 
-// checks for correctness of solution
-int check_correctness(char *board, int W, int H, int *cats, int n_cats, int *lasers, int n_lasers) {
-	unsigned char *laser_map = calloc(W * H, sizeof(unsigned char));
-	for (int l = 0; l < n_lasers; l++) {
-		int pos = lasers[l];
-		int dir = board[pos];
-		int hit_wall = 0;
-		while (!hits_edge(W, H, pos, dir) && !hit_wall) {
-			pos = move(W, pos, dir);
-			switch(board[pos]) {
-				case EMPTY:
-				case CAT:
-					laser_map[pos] = COVERED;
-					break;
-				case WALL:
-					hit_wall = 1;
-					break;
-				case MIRROR_1:
-				case MIRROR_2:
-					dir = change_dir(dir, board[pos]);
-					break;
-			}
-		}
-	}
+// checks if given solution is correct
+int is_correct(unsigned int *laser_map, int *cats, int n_cats) {
 	for (int c = 0; c < n_cats; c++) {
-		if (laser_map[cats[c]] != COVERED) {
-			free(laser_map);
-			return 0;
-		}
+		if (laser_map[cats[c]] < 1) return 0;
 	}
-	free(laser_map);
 	return 1;
 }
 
-// find indices of cats, lasers and empty_spaces
-void find_cats_lasers_empties(char *board, int W, int H, int *cats, int *n_cats, int *lasers, int *n_lasers, int *empties, int *n_empties) {
+// find indices of cats and lasers
+void find_cats_and_lasers(char *board, int W, int H, int *cats, int *n_cats, int *lasers, int *n_lasers) {
 	*n_cats = 0;
 	*n_lasers = 0;
-	*n_empties = 0;
 	for (int i = 0; i < W*H; i++) {
 		switch(board[i]) {
 			case CAT:
@@ -129,101 +104,76 @@ void find_cats_lasers_empties(char *board, int W, int H, int *cats, int *n_cats,
 			case RIGHT_LASER:
 				lasers[(*n_lasers)++] = i;
 				break;
-			case EMPTY:
-				empties[(*n_empties)++] = i;
-				break;
 		}
 	}
 }
 
-// place mirrors in given positions
-void place_mirrors(char *board, int *mirrors, int L, int *empties) {
-	for (int i = 0; i < L; i++) board[empties[mirrors[i]]] = MIRROR_1;
-}
+// update laser map - value is the amount of times a laser passes through a field
+void update_laser_map(unsigned int *laser_map, char *board, int W, int H, int *lasers, int n_lasers) {
+	memset(laser_map, 0, W*H * sizeof(unsigned int));
+	for (int i = 0; i < n_lasers; i++) {
+		int pos = lasers[i];
+		char dir = board[pos];
+		int hit_wall = 0;
+		while (!hits_edge(W, H, pos, dir) && !hit_wall) {
+			pos = move(W, pos, dir);
+			// prevent a loop
+			if (pos == lasers[i] && dir == board[lasers[i]]) break;
 
-// rotate placed mirrors, returns 0 if at last rotation
-int rotate_mirrors(char *board, int *mirrors, int mirror, int *empties) {
-	if (mirror < 0) return 0;
-	if (board[empties[mirrors[mirror]]] == MIRROR_2) {
-		board[empties[mirrors[mirror]]] = MIRROR_1;
-		return rotate_mirrors(board, mirrors, mirror-1, empties);
+			switch (board[pos]) {
+				case WALL:
+					hit_wall = 1;
+					break;
+				case MIRROR_1:
+				case MIRROR_2:
+					dir = change_dir(dir, board[pos]);
+				default:
+					laser_map[pos]++;
+			}
+		}
 	}
-	board[empties[mirrors[mirror]]] = MIRROR_2;
-	return 1;
 }
 
-// remove mirrors from board
-void remove_mirrors(char *board, int *mirrors, int L, int *empties) {
-	for (int i = 0; i < L; i++) board[empties[mirrors[i]]] = EMPTY;
-}
+// bruteforce
+int bruteforce(char *board, int W, int H, int L, unsigned int *laser_map, int *cats, int n_cats, int *lasers, int n_lasers) {
+	// if no more mirrors to place - check if the solution is correct
+	if (L < 1) return is_correct(laser_map, cats, n_cats);
 
-// next combination of mirror placements
-void next_combination(int *mirrors, int L, int n_empties) {
-	int mirror = L-1;
-	while (mirror > 0 && mirrors[mirror] == n_empties - L + mirror) mirror--;
-	mirrors[mirror]++;
-	for (int i = mirror+1; i < L; i++) mirrors[i] = mirrors[i-1]+1;
+	// place recursively mirrors on places that have lasers passing through them
+	for (int pos = 0; pos < W*H; pos++) {
+		if (board[pos] != EMPTY || laser_map[pos] == 0) continue;
+		for (int i = 0; i < 2; i++) {
+			board[pos] = mirror_types[i];
+			update_laser_map(laser_map, board, W, H, lasers, n_lasers);
+			if(bruteforce(board, W, H, L-1, laser_map, cats, n_cats, lasers, n_lasers))
+				return 1;
+		}
+		board[pos] = EMPTY;
+		update_laser_map(laser_map, board, W, H, lasers, n_lasers);
+	}
+	return 0;
 }
 
 // solves the problem
 void solve(char *board, int W, int H, int L) {
-	// find indices of cats, lasers and empty spaces
+	// find indices of cats, lasers
 	int *cats = malloc(sizeof(int) * W*H);
 	int *lasers = malloc(sizeof(int) * W*H);
-	int *empties = malloc(sizeof(int) * W*H);
-	int n_cats, n_lasers, n_empties;
-	find_cats_lasers_empties(board, W, H, cats, &n_cats, lasers, &n_lasers, empties, &n_empties);
+	int n_cats, n_lasers;
+	find_cats_and_lasers(board, W, H, cats, &n_cats, lasers, &n_lasers);
 	cats = realloc(cats, sizeof(int) * n_cats);
 	lasers = realloc(lasers, sizeof(int) * n_lasers);
-	empties = realloc(empties, sizeof(int) * n_empties);
 
-	// BRUTEFORCE
+	// define map of lasers
+	unsigned int *laser_map = malloc(W*H * sizeof(unsigned int));
+	update_laser_map(laser_map, board, W, H, lasers, n_lasers);
 
-	// place mirrors in initial positions
-	L = n_empties < L ? n_empties : L;
-	if (L < 1) return;
-
-	int *mirrors = malloc(sizeof(int) * L);
-	for (int i = 0; i < L; i++) {
-		mirrors[i] = i;
-	}
-	place_mirrors(board, mirrors, L, empties);
-
-	while (!check_correctness(board, W, H, cats, n_cats, lasers, n_lasers)) {
-		// check all rotations of mirrors
-		while (rotate_mirrors(board, mirrors, L-1, empties)) {
-			if (check_correctness(board, W, H, cats, n_cats, lasers, n_lasers)) {
-				free(cats);
-				free(lasers);
-				free(empties);
-				free(mirrors);
-				return;
-			}
-		}
-
-		// remove placed mirrors
-		remove_mirrors(board, mirrors, L, empties);
-
-		// if no solutions found - try placing less mirrors
-		if (mirrors[0] == n_empties-L) {
-			free(cats);
-			free(lasers);
-			free(empties);
-			free(mirrors);
-			solve(board, W, H, L-1);
-			return;
-		}
-
-		// find next placement combination for mirrors
-		next_combination(mirrors, L, n_empties);
-		// place mirrors in new placement combination
-		place_mirrors(board, mirrors, L, empties);
-	}
+	// check for solutions using mirrors from L to 1
+	while (!bruteforce(board, W, H, L, laser_map, cats, n_cats, lasers, n_lasers) && --L >= 0);
 
 	free(cats);
 	free(lasers);
-	free(empties);
-	free(mirrors);
+	free(laser_map);
 }
 
 int main(int argc, char *argv[]) {
