@@ -165,6 +165,8 @@ void next_combination(int *mirrors, int L, int n_empties) {
 
 // solves the problem
 void solve(char *board, int W, int H, int L) {
+	if (L < 1) return;
+
 	// find indices of cats, lasers and empty spaces
 	int *cats = malloc(sizeof(int) * W*H);
 	int *lasers = malloc(sizeof(int) * W*H);
@@ -178,6 +180,7 @@ void solve(char *board, int W, int H, int L) {
 	// BRUTEFORCE
 
 	// place mirrors in initial positions
+	L = n_empties < L ? n_empties : L;
 	int *mirrors = malloc(sizeof(int) * L);
 	for (int i = 0; i < L; i++) {
 		mirrors[i] = i;
