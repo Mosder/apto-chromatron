@@ -89,10 +89,9 @@ int is_correct(unsigned int *laser_map, int *cats, int n_cats) {
 	return 1;
 }
 
-// find indices of cats and lasers
-void find_cats_and_lasers(char *board, int W, int H, int *cats, int *n_cats, int *lasers, int *n_lasers) {
+// find indices of cats and laser
+void find_cats_and_laser(char *board, int W, int H, int *cats, int *n_cats, int *laser) {
 	*n_cats = 0;
-	*n_lasers = 0;
 	for (int i = 0; i < W*H; i++) {
 		switch(board[i]) {
 			case CAT:
@@ -102,77 +101,79 @@ void find_cats_and_lasers(char *board, int W, int H, int *cats, int *n_cats, int
 			case DOWN_LASER:
 			case LEFT_LASER:
 			case RIGHT_LASER:
-				lasers[(*n_lasers)++] = i;
+				*laser = i;
 				break;
 		}
 	}
 }
 
 // update laser map - value is the amount of times a laser passes through a field
-void update_laser_map(unsigned int *laser_map, char *board, int W, int H, int *lasers, int n_lasers) {
+// returns the number of lit cats
+int update_laser_map(unsigned int *laser_map, char *board, int W, int H, int laser) {
 	memset(laser_map, 0, W*H * sizeof(unsigned int));
-	for (int i = 0; i < n_lasers; i++) {
-		int pos = lasers[i];
-		char dir = board[pos];
-		int hit_wall = 0;
-		while (!hits_edge(W, H, pos, dir) && !hit_wall) {
-			pos = move(W, pos, dir);
-			// prevent a loop
-			if (pos == lasers[i] && dir == board[lasers[i]]) break;
+	int pos = laser;
+	char dir = board[pos];
+	int hit_wall = 0;
+	int lit_cats = 0;
+	while (!hits_edge(W, H, pos, dir) && !hit_wall) {
+		pos = move(W, pos, dir);
+		// prevent a loop
+		if (pos == laser && dir == board[laser]) break;
 
-			switch (board[pos]) {
-				case WALL:
-					hit_wall = 1;
-					break;
-				case MIRROR_1:
-				case MIRROR_2:
-					dir = change_dir(dir, board[pos]);
-				default:
-					laser_map[pos]++;
-			}
+		switch (board[pos]) {
+			case WALL:
+				hit_wall = 1;
+				break;
+			case MIRROR_1:
+			case MIRROR_2:
+				dir = change_dir(dir, board[pos]);
+			case CAT:
+				if (laser_map[pos] == 0) lit_cats++;
+			default:
+				laser_map[pos]++;
 		}
 	}
+	return lit_cats;
 }
 
 // bruteforce
-int bruteforce(char *board, int W, int H, int L, unsigned int *laser_map, int *cats, int n_cats, int *lasers, int n_lasers) {
+int bruteforce(char *board, int W, int H, int L, unsigned int *laser_map, int *cats, int n_cats, int laser, int depth, int lit_cats) {
 	// if no more mirrors to place - check if the solution is correct
-	if (L < 1) return is_correct(laser_map, cats, n_cats);
+	if (L < 1 || depth < 1) return is_correct(laser_map, cats, n_cats);
 
 	// place recursively mirrors on places that have lasers passing through them
 	for (int pos = 0; pos < W*H; pos++) {
 		if (board[pos] != EMPTY || laser_map[pos] == 0) continue;
 		for (int i = 0; i < 2; i++) {
 			board[pos] = mirror_types[i];
-			update_laser_map(laser_map, board, W, H, lasers, n_lasers);
-			if(bruteforce(board, W, H, L-1, laser_map, cats, n_cats, lasers, n_lasers))
+			int new_lit_cats = update_laser_map(laser_map, board, W, H, laser);
+			int new_depth = new_lit_cats <= lit_cats ? depth - 1 : depth;
+			if(bruteforce(board, W, H, L-1, laser_map, cats, n_cats, laser, new_depth, new_lit_cats))
 				return 1;
 		}
 		board[pos] = EMPTY;
-		update_laser_map(laser_map, board, W, H, lasers, n_lasers);
+		update_laser_map(laser_map, board, W, H, laser);
 	}
 	return 0;
 }
 
 // solves the problem
 void solve(char *board, int W, int H, int L) {
-	// find indices of cats, lasers
+	// find indices of cats and laser
 	int *cats = malloc(sizeof(int) * W*H);
-	int *lasers = malloc(sizeof(int) * W*H);
-	int n_cats, n_lasers;
-	find_cats_and_lasers(board, W, H, cats, &n_cats, lasers, &n_lasers);
+	int n_cats, laser;
+	find_cats_and_laser(board, W, H, cats, &n_cats, &laser);
 	cats = realloc(cats, sizeof(int) * n_cats);
-	lasers = realloc(lasers, sizeof(int) * n_lasers);
 
 	// define map of lasers
 	unsigned int *laser_map = malloc(W*H * sizeof(unsigned int));
-	update_laser_map(laser_map, board, W, H, lasers, n_lasers);
+	int lit_cats = update_laser_map(laser_map, board, W, H, laser);
 
-	// check for solutions using mirrors from L to 1
-	while (!bruteforce(board, W, H, L, laser_map, cats, n_cats, lasers, n_lasers) && --L >= 0);
+	// check for solutions using mirrors L and depth from 1 to 100
+	int depth = 1;
+	while (!bruteforce(board, W, H, L, laser_map, cats, n_cats, laser, depth, lit_cats) && ++depth <= 100);
 
 	free(cats);
-	free(lasers);
 	free(laser_map);
 }
 
