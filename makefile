@@ -1,5 +1,5 @@
 chromatron:
-	gcc main.c -o main
+	gcc main.c -lm -o main
 
 .PHONY: clean
 clean:

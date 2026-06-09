@@ -2,6 +2,8 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <string.h>
+#include <time.h>
+#include <math.h>
 
 #define EMPTY '.'
 #define UP_LASER 'A'
@@ -160,6 +162,98 @@ int bruteforce(char *board, int W, int H, int L, unsigned int *laser_map, int *c
 	return 0;
 }
 
+// initialize random state
+void initialize_random(char *board, int W, int H, int L, int *mirror_pos) {
+	for (int i = 0; i < L ; i++) {
+		int pos;
+		do {
+			pos = rand() % (W*H);
+		} while (board[pos] != EMPTY);
+		mirror_pos[i] = pos;
+		board[pos] = mirror_types[rand() % 2];
+	}
+}
+
+// annealing
+void annealing(char *board, int W, int H, int L, unsigned int *laser_map, int *cats, int n_cats, int *lasers, int n_lasers) {
+	srand(time(NULL));
+
+	int *mirror_pos = malloc(sizeof(int) * L);
+	char *best_board = malloc(W * H);
+
+	// initialize random state
+	initialize_random(board, W, H, L, mirror_pos);
+	memcpy(best_board,board,W*H);
+
+	int lit = update_laser_map(laser_map, board, W, H, lasers, n_lasers);
+	int best_lit = lit;
+
+	// probability to change in percentages
+	int move_prob = 50;
+	int rotate_prob = 50;
+
+	// start annealing
+	double temp = 1000.0;
+	double temp_min = 1e-3;
+	double alpha = 0.999;
+	while (temp > temp_min && best_lit < n_cats) {
+		int mirror_index = rand() % L;
+		int old_pos = mirror_pos[mirror_index];
+		char old_type = board[old_pos];
+		board[old_pos] = EMPTY;
+		int new_pos;
+		char new_type;
+
+		// move
+		if(rand() % 100 < move_prob) {
+			do {
+				new_pos = rand() % (W*H);
+			} while (board[new_pos] != EMPTY || new_pos == old_pos);
+		}
+
+		// rotate
+		if(rand() % 100 < rotate_prob) {
+			new_type = old_type == MIRROR_1 ? MIRROR_2 : MIRROR_1;
+		}
+
+		mirror_pos[mirror_index] = new_pos;
+		board[new_pos] = new_type;
+
+		int new_lit = update_laser_map(laser_map, board, W, H, lasers, n_lasers);
+
+		// check if we accept new state
+		int accept = 0;
+		if (new_lit >= lit) {
+			accept = 1;
+		}
+		else {
+			double exponent = -(lit-new_lit) / temp;
+			double prob = exp(exponent);
+			if (rand() % 100000 < prob * 100000) accept = 1;
+		}
+
+		// accept or not
+		if (accept) {
+			lit = new_lit;
+			if (lit > best_lit) {
+				best_lit = lit;
+				memcpy(best_board, board, W*H);
+			}
+		}
+		else {
+			board[new_pos] = EMPTY;
+			mirror_pos[mirror_index] = old_pos;
+			board[old_pos] = old_type;
+		}
+
+		temp *= alpha;
+	}
+
+	memcpy(board, best_board, W*H);
+	free(best_board);
+	free(mirror_pos);
+}
+
 // solves the problem
 void solve(char *board, int W, int H, int L) {
 	// find indices of cats and lasers
@@ -172,11 +266,15 @@ void solve(char *board, int W, int H, int L) {
 
 	// define map of lasers
 	unsigned int *laser_map = malloc(W*H * sizeof(unsigned int));
-	int lit_cats = update_laser_map(laser_map, board, W, H, lasers, n_lasers);
 
+	// BRUTEFORCE
 	// check for solutions using mirrors L and depth from 1 to 100
-	int depth = 1;
-	while (!bruteforce(board, W, H, L, laser_map, cats, n_cats, lasers, n_lasers, depth, lit_cats) && ++depth <= 100);
+	//int lit_cats = update_laser_map(laser_map, board, W, H, lasers, n_lasers);
+	//int depth = 1;
+	//while (!bruteforce(board, W, H, L, laser_map, cats, n_cats, lasers, n_lasers, depth, lit_cats) && ++depth <= 100);
+
+	// ANNEALING
+	annealing(board, W, H, L, laser_map, cats, n_cats, lasers, n_lasers);
 
 	free(cats);
 	free(lasers);
