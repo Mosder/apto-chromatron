@@ -131,6 +131,8 @@ int update_laser_map(unsigned int *laser_map, char *board, int W, int H, int* la
 				case MIRROR_1:
 				case MIRROR_2:
 					dir = change_dir(dir, board[pos]);
+					laser_map[pos]++;
+					break;
 				case CAT:
 					if (laser_map[pos] == 0) lit_cats++;
 				default:
@@ -163,56 +165,61 @@ int bruteforce(char *board, int W, int H, int L, unsigned int *laser_map, int *c
 }
 
 // initialize random state
-void initialize_random(char *board, int W, int H, int L, int *mirror_pos) {
+void initialize_random(char *board, int W, int H, int L, int *mirror_pos, unsigned int *laser_map, int *lasers, int n_lasers) {
 	for (int i = 0; i < L ; i++) {
 		int pos;
 		do {
 			pos = rand() % (W*H);
-		} while (board[pos] != EMPTY);
+		} while (board[pos] != EMPTY || laser_map[pos] == 0);
 		mirror_pos[i] = pos;
 		board[pos] = mirror_types[rand() % 2];
+		update_laser_map(laser_map, board, W, H, lasers, n_lasers);
 	}
 }
 
 // annealing
-void annealing(char *board, int W, int H, int L, unsigned int *laser_map, int *cats, int n_cats, int *lasers, int n_lasers) {
-	srand(time(NULL));
-
+int annealing(char *board, int W, int H, int L, unsigned int *laser_map, int *cats, int n_cats, int *lasers, int n_lasers) {
 	int *mirror_pos = malloc(sizeof(int) * L);
 	char *best_board = malloc(W * H);
 
 	// initialize random state
-	initialize_random(board, W, H, L, mirror_pos);
+	initialize_random(board, W, H, L, mirror_pos, laser_map, lasers, n_lasers);
 	memcpy(best_board,board,W*H);
 
 	int lit = update_laser_map(laser_map, board, W, H, lasers, n_lasers);
 	int best_lit = lit;
 
 	// probability to change in percentages
-	int move_prob = 50;
-	int rotate_prob = 50;
+	int only_move_prob = 40;
+	int only_rotate_prob = 20;
 
 	// start annealing
 	double temp = 1000.0;
 	double temp_min = 1e-3;
-	double alpha = 0.999;
+	double alpha = 0.9995;
 	while (temp > temp_min && best_lit < n_cats) {
 		int mirror_index = rand() % L;
 		int old_pos = mirror_pos[mirror_index];
 		char old_type = board[old_pos];
 		board[old_pos] = EMPTY;
-		int new_pos;
-		char new_type;
+		int new_pos = old_pos;
+		char new_type = old_type;
+
+		// decide what to do
+		// 0 - move, 1 - rotate, 2 - move and rotate
+		int random = rand() % 100;
+		int choice = random < only_move_prob ? 0 : (random < only_move_prob + only_rotate_prob ? 1 : 2);
 
 		// move
-		if(rand() % 100 < move_prob) {
+		if(choice == 0 || choice == 2) {
+			update_laser_map(laser_map, board, W, H, lasers, n_lasers);
 			do {
 				new_pos = rand() % (W*H);
-			} while (board[new_pos] != EMPTY || new_pos == old_pos);
+			} while (board[new_pos] != EMPTY || new_pos == old_pos || laser_map[new_pos] == 0);
 		}
 
 		// rotate
-		if(rand() % 100 < rotate_prob) {
+		if(choice == 1 || choice == 2) {
 			new_type = old_type == MIRROR_1 ? MIRROR_2 : MIRROR_1;
 		}
 
@@ -252,10 +259,14 @@ void annealing(char *board, int W, int H, int L, unsigned int *laser_map, int *c
 	memcpy(board, best_board, W*H);
 	free(best_board);
 	free(mirror_pos);
+	printf("best: %d, cats: %d\n", best_lit, n_cats);
+	return best_lit == n_cats;
 }
 
 // solves the problem
 void solve(char *board, int W, int H, int L) {
+	srand(time(NULL));
+
 	// find indices of cats and lasers
 	int *cats = malloc(sizeof(int) * W*H);
 	int *lasers = malloc(sizeof(int) * W*H);
@@ -266,16 +277,21 @@ void solve(char *board, int W, int H, int L) {
 
 	// define map of lasers
 	unsigned int *laser_map = malloc(W*H * sizeof(unsigned int));
+	int lit_cats = update_laser_map(laser_map, board, W, H, lasers, n_lasers);
 
 	// BRUTEFORCE
 	// check for solutions using mirrors L and depth from 1 to 100
-	//int lit_cats = update_laser_map(laser_map, board, W, H, lasers, n_lasers);
 	//int depth = 1;
 	//while (!bruteforce(board, W, H, L, laser_map, cats, n_cats, lasers, n_lasers, depth, lit_cats) && ++depth <= 100);
 
 	// ANNEALING
-	annealing(board, W, H, L, laser_map, cats, n_cats, lasers, n_lasers);
+	char *board_copy = malloc(W*H);
+	memcpy(board_copy, board, W*H);
+	while(!annealing(board, W, H, L, laser_map, cats, n_cats, lasers, n_lasers)) {
+		memcpy(board, board_copy, W*H);
+	}
 
+	free(board_copy);
 	free(cats);
 	free(lasers);
 	free(laser_map);
