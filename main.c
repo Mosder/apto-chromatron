@@ -259,7 +259,6 @@ int annealing(char *board, int W, int H, int L, unsigned int *laser_map, int *ca
 	memcpy(board, best_board, W*H);
 	free(best_board);
 	free(mirror_pos);
-	printf("best: %d, cats: %d\n", best_lit, n_cats);
 	return best_lit == n_cats;
 }
 
